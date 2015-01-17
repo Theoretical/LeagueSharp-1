@@ -10,19 +10,16 @@ namespace PennyJinx
 {
     internal class PennyJinx
     {
-        private const String ChampName = "Jinx";
         public static Obj_AI_Hero Player;
         public static Spell Q, W, E, R;
         public static Menu Menu;
         private static Orbwalking.Orbwalker _orbwalker;
         private static readonly StringList QMode = new StringList(new[] {"AOE mode", "Range mode", "Both"}, 2);
         public static Render.Sprite Sprite;
-        public static PennyJinx Instance;
         public static float LastCheck;
 
         public PennyJinx()
         {
-            Instance = this;
             CustomEvents.Game.OnGameLoad += Game_OnGameLoad;
         }
 
@@ -34,7 +31,7 @@ namespace PennyJinx
         private void Game_OnGameLoad(EventArgs args)
         {
             Player = ObjectManager.Player;
-            if (Player.ChampionName != ChampName)
+            if (Player.ChampionName != "Jinx")
             {
                 return;
             }
@@ -56,7 +53,8 @@ namespace PennyJinx
 
         private static void AntiGapcloser_OnEnemyGapcloser(ActiveGapcloser gapcloser)
         {
-            var sender = (Obj_AI_Hero) gapcloser.Sender;
+            var sender = gapcloser.Sender as Obj_AI_Hero;
+
             if (!sender.IsValidTarget() || !IsMenuEnabled("AntiGP") || !E.IsReady())
             {
                 return;
@@ -67,7 +65,8 @@ namespace PennyJinx
 
         private static void Interrupter_OnPossibleToInterrupt(Obj_AI_Base unit, InterruptableSpell spell)
         {
-            var sender = (Obj_AI_Hero) unit;
+            var sender = unit as Obj_AI_Hero;
+
             if (!sender.IsValidTarget() || !IsMenuEnabled("Interrupter") || !E.IsReady())
             {
                 return;
@@ -79,6 +78,7 @@ namespace PennyJinx
         private static void Orbwalking_BeforeAttack(Orbwalking.BeforeAttackEventArgs args)
         {
             var target = args.Target;
+
             if (!target.IsValidTarget())
             {
                 return;
@@ -107,8 +107,7 @@ namespace PennyJinx
                 return;
             }
 
-            var tar = (Obj_AI_Hero) target;
-            UseItems(tar);
+            UseItems(target as Obj_AI_Hero);
         }
 
         private void Game_OnGameUpdate(EventArgs args)
@@ -135,6 +134,7 @@ namespace PennyJinx
                     WUsageFarm();
                     break;
             }
+
             if (Menu.Item("ThreshLantern").GetValue<KeyBind>().Active)
             {
                 TakeLantern();
@@ -158,6 +158,7 @@ namespace PennyJinx
             var qRange = IsFishBone()
                 ? 525f + ObjectManager.Player.BoundingRadius + 65f
                 : 525f + ObjectManager.Player.BoundingRadius + 65f + GetFishboneRange() + 20f;
+
             if (drawQ.Active)
             {
                 Utility.DrawCircle(Player.Position, qRange, drawQ.Color);
@@ -186,6 +187,7 @@ namespace PennyJinx
         private static void UseItems(Obj_AI_Hero tar)
         {
             var ownH = GetPerValue(false);
+
             if ((Menu.Item("BotrkC").GetValue<bool>() && _orbwalker.ActiveMode == Orbwalking.OrbwalkingMode.Combo) &&
                 (Menu.Item("OwnHPercBotrk").GetValue<Slider>().Value <= ownH) &&
                 ((Menu.Item("EnHPercBotrk").GetValue<Slider>().Value <= tar.HealthPercentage())))
@@ -234,21 +236,18 @@ namespace PennyJinx
 
             LastCheck = Environment.TickCount;
             var player = ObjectManager.Player;
+
             if (!spell.IsReady())
             {
                 return;
             }
 
-            foreach (
-                var targetPosition in
-                    ObjectManager.Get<Obj_AI_Hero>()
-                        .Where(
-                            obj =>
-                                obj.Distance(player) < spell.Range && obj.Team != player.Team &&
-                                obj.HasBuff("teleport_target", true)))
-            {
-                spell.Cast(targetPosition.ServerPosition);
-            }
+
+            var validTargets = ObjectManager.Get<Obj_AI_Hero>().Where(o =>
+                o.Distance(player) < spell.Range && o.IsEnemy && player.HasBuff("teleport_target", true));
+
+            foreach (var target in validTargets)
+                spell.Cast(target.ServerPosition);
         }
 
         private static void AutoPot()
@@ -264,6 +263,7 @@ namespace PennyJinx
             {
                 UseItem(2003);
             }
+
             //Mana Pots
             if (IsMenuEnabled("APM") && GetPerValue(true) <= Menu.Item("APM_Slider").GetValue<Slider>().Value &&
                 !Player.HasBuff("FlaskOfCrystalWater", true))
@@ -286,20 +286,14 @@ namespace PennyJinx
 
         private static void TakeLantern()
         {
-            foreach (var interactPkt in from obj in ObjectManager.Get<GameObject>()
-                where
-                    obj.Name.Contains("ThreshLantern") &&
-                    obj.Position.Distance(ObjectManager.Player.ServerPosition) <= 500 && obj.IsAlly
-                select new PKT_InteractReq
-                {
-                    NetworkId = Player.NetworkId,
-                    TargetNetworkId = obj.NetworkId
-                })
+            var lanterns = ObjectManager.Get<GameObject>().Where(o =>
+                o.Name.Contains("ThreshLantern") && o.Position.Distance(Player.ServerPosition) <= 500 && o.IsAlly).ToList();
+
+            lanterns.ForEach((l) =>
             {
-                //Credits to Trees
-                Game.SendPacket(interactPkt.Encode(), PacketChannel.C2S, PacketProtocolFlags.Reliable);
-                return;
-            }
+                var packet = new PKT_InteractReq { NetworkId = Player.NetworkId, TargetNetworkId = l.NetworkId};
+                Game.SendPacket(packet.Encode(), PacketChannel.C2S, PacketProtocolFlags.Reliable);
+            });
         }
 
         private static void SwitchLc()
@@ -325,6 +319,7 @@ namespace PennyJinx
             var range = IsFishBone()
                 ? 525f + ObjectManager.Player.BoundingRadius + 65f
                 : 525f + ObjectManager.Player.BoundingRadius + 65f + GetFishboneRange() + 20f;
+
             if (Player.CountEnemysInRange((int) range) != 0)
             {
                 return;
@@ -350,6 +345,7 @@ namespace PennyJinx
             {
                 ECast();
             }
+
             SwitchNoEn();
             AutoWHarass();
             AutoWEmpaired();
@@ -366,6 +362,7 @@ namespace PennyJinx
             WCast(_orbwalker.ActiveMode);
             RCast();
             QManager("C");
+
             if (GetEMode() == 0)
             {
                 ECast_DZ();
@@ -406,11 +403,14 @@ namespace PennyJinx
             var wMana = mode == Orbwalking.OrbwalkingMode.LaneClear
                 ? GetSliderValue("WManaLC")
                 : GetSliderValue("WManaLH");
+
             var wEnabled = mode == Orbwalking.OrbwalkingMode.LaneClear
                 ? IsMenuEnabled("UseWLC")
                 : IsMenuEnabled("UseWLH");
+
             var mList = MinionManager.GetMinions(Player.Position, W.Range);
             var location = W.GetLineFarmLocation(mList);
+
             if (GetPerValue(true) >= wMana && wEnabled)
             {
                 W.Cast(location.Position);
@@ -560,6 +560,7 @@ namespace PennyJinx
                             Range = 900f,
                             Type = SkillshotType.SkillshotCircle
                         }).CastPosition;
+
                 if (GetSlowEndTime(enemy) >= (Game.Time + E.Delay + 0.5f))
                 {
                     E.Cast(castPosition);
